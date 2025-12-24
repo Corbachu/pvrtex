@@ -14,7 +14,7 @@ void fTexWrite(const PvrTexEncoder *pte, const char *outfname) {
 	unsigned textype = 0;
 	textype |= pteHasMips(pte) ? (1<<31) : 0;
 	textype |= pteIsCompressed(pte) ? (1<<30) : 0;
-	textype |= pte->pixel_format << 27;
+	textype |= pte->hw_pixel_format << 27;
 	textype |= !pte->raw_is_twiddled << 26;
 	textype |= pteIsStrided(pte) ? (1<<25) : 0;
 	textype |= (pte->w / 32) & 0x1f;

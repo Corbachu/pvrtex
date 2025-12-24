@@ -205,16 +205,16 @@ void pteDither(const unsigned char *src, unsigned w, unsigned h, unsigned channe
 	}
 	
 	switch(dst_pixel_format) {
-	case PTE_ARGB4444: pteConvertFPtoARGB4444(imgf, w, h, channels, palette, palette_size, dst); break;
-	case PTE_ARGB1555: pteConvertFPtoARGB1555(imgf, w, h, channels, palette, palette_size, dst); break;
-	case PTE_RGB565: pteConvertFPtoRGB565(imgf, w, h, channels, palette, palette_size, dst); break;
+	case PT_ARGB4444: pteConvertFPtoARGB4444(imgf, w, h, channels, palette, palette_size, dst); break;
+	case PT_ARGB1555: pteConvertFPtoARGB1555(imgf, w, h, channels, palette, palette_size, dst); break;
+	case PT_RGB565: pteConvertFPtoRGB565(imgf, w, h, channels, palette, palette_size, dst); break;
 	case PTE_ABGR8888: pteConvertFPtoABGR8888(imgf, w, h, channels, palette, palette_size, dst); break;
 	}
 	
 	free(imgf);
 }
 
-dithFindNearest pteGetFindNearest(ptePixelFormat format) {
+dithFindNearest pteGetFindNearest(ptPixelFormat format) {
 	static const dithFindNearest tbl[] = {
 		&pteDNearestARGB1555,
 		&pteDNearestRGB565,
@@ -223,9 +223,11 @@ dithFindNearest pteGetFindNearest(ptePixelFormat format) {
 		&pteDNearestNorm,
 		&pteDNearest8BPP,
 		&pteDNearest8BPP,
+		NULL,
+		&pteDNearestNorm,
 	};
 	
-	assert(format >= PTE_ARGB1555 && format <= PTE_PALETTE_8B && format != PTE_YUV);
+	assert(format >= PT_ARGB1555 && format <= PT_NORMAL_TEXCONV && format != PT_YUV);
 	
 	return tbl[format];
 }

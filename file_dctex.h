@@ -57,6 +57,8 @@ typedef struct {
 		Size of file, including header. This is different to IFF, which does not include the size of the fourcc and size fields.
 		
 		Size is always rounded up to 32 bytes
+		
+		The function fDtGetTotalSize returns the value of chunk_size.
 	*/
 	uint32_t chunk_size;
 	
@@ -74,13 +76,15 @@ typedef struct {
 		A header_size of 0 means the texture data starts 32 bytes after the start of the header, a size of 3 means 128 bytes...
 		
 		This allows for backwards compatible changes to the size of the header, or adding additional user data.
+		
+		The function fDtGetHeaderSize() can be used to calculate the header size.
 	*/
 	uint8_t header_size;
 	
 	/*
 		Values range from 0-255, mapping to 1-256. To get the real number of codebook entries or colors,
 		add one to this value. (e.g. if colors_used == 15, then there are 16 different colors, if,
-		colors_used == 2, then 2 colors are used)
+		colors_used == 1, then 2 colors are used)
 		
 		The value of codebook_size is undefined if not compressed, and should not be relied upon.
 		colors_used is similarly undefined if pixel format is not 8BPP or 4BPP.
@@ -211,7 +215,10 @@ typedef struct {
 	
 	uint32_t pad3;
 	
-	//Texture data follows...
+	//Additional header and texture data follows...
+	/*
+		The function fDtGetTextureSize() can be used to find the size of the texture data.
+	*/
 } fDtHeader;
 
 /*
@@ -257,9 +264,12 @@ static inline size_t fDtGetTextureSize(const fDtHeader *tex) {
 
 /*
 	Returns pointer to end of texture (byte after final byte of texture)
+	
+	If you concatenate multiple texture filesk and load them into RAM 
+	contiguously, this would return the next texture.
 */
 static inline void * fDtGetNextChunk(const fDtHeader *tex) {
-	return (void*)tex + fDtGetTotalSize(tex);
+	return (void*)((char*)tex + fDtGetTotalSize(tex));
 }
 
 
@@ -413,9 +423,11 @@ static inline unsigned fDtGetCodebookSizeBytes(const fDtHeader *tex) {
 
 /*
 	Returns pointer to pixel data
+	
+	This assumes the entire texture has been loaded into RAM.
 */
 static inline void * fDtGetPvrTexData(const fDtHeader *tex) {
-	return (void*)tex + fDtGetHeaderSize(tex);
+	return (void*)((char*)tex + fDtGetHeaderSize(tex));
 }
 
 /*
@@ -492,7 +504,7 @@ static bool __attribute__((unused)) fDtValidateHeader(const fDtHeader *tex) {
 */
 static inline pvr_ptr_t fDtAdjustPVRPointer(const fDtHeader * texheader, pvr_ptr_t pvr) {
 	if (fDtIsCompressed(texheader)) {
-		return pvr - FDT_CODEBOOK_MAX_SIZE_BYTES + fDtGetCodebookSizeBytes(texheader);
+		return (void*)((char*)pvr - FDT_CODEBOOK_MAX_SIZE_BYTES + fDtGetCodebookSizeBytes(texheader));
 	} else {
 		return pvr;
 	}
@@ -517,7 +529,7 @@ static inline void fDtSetPvrStride(const fDtHeader *tex) {
 */
 static inline void fDtSetTAParameters(pvr_poly_hdr_t *dst, const fDtHeader *tex, pvr_ptr_t video_ram_addr) {
 	dst->mode2 = (dst->mode2 & ~FDT_PVR_SIZE_MASK) | (tex->pvr_type & FDT_PVR_SIZE_MASK);
-	dst->mode3 = (tex->pvr_type & FDT_PVR_MODE_PAL_MASK);
+	dst->mode3 = (tex->pvr_type & FDT_PVR_MODE_MASK);
 	dst->mode3 |= 0x1ffffff & ((unsigned)fDtAdjustPVRPointer(tex, video_ram_addr) >> 3);
 }
 static inline void fDtSetTAParametersIC(pvr_poly_ic_hdr_t *dst, const fDtHeader *tex, pvr_ptr_t video_ram_addr) {

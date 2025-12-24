@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <math.h>
 
-#ifdef __CPLUSPLUS
+#ifdef __cplusplus
 #include <string.h>
 extern "C" {
 #endif
@@ -45,7 +45,7 @@ union v2f {
 		float x, y;
 	};
 	float v[2];
-	#ifdef __CPLUSPLUS
+	#ifdef __cplusplus
 	inline bool operator <(const v2f &b) const { return memcmp(this, &b, sizeof(b)) < 0; }
 	#endif
 };
@@ -56,7 +56,7 @@ union v3f {
 	};
 	float v[3];
 	v2f xy;
-	#ifdef __CPLUSPLUS
+	#ifdef __cplusplus
 	inline bool operator <(const v3f &b) const { return memcmp(this, &b, sizeof(b)) < 0; }
 	#endif
 };
@@ -680,6 +680,22 @@ static inline v4i v4IntRnd(v4f v){
 	return r;
 }
 
+static inline float v2Cross(v2f l, v2f r) {
+	return l.x*r.y - l.y*r.x;
+}
+static inline v3f v3Cross(v3f l, v3f r) {
+	v3f d;
+	d.x = l.y*r.z - l.z*r.y;
+	d.y = l.z*r.x - l.x*r.z;
+	d.z = l.x*r.y - l.y*r.x;
+	return d;
+}
+static inline float v3Triple(v3f a, v3f b, v3f c) {
+	return v3Dot(a, v3Cross(b, c));
+}
+
+#ifdef _arch_dreamcast
+
 static inline v3f v3Ftrv(v3f v) {
 	register float x __asm__("fr8") = v.x;
 	register float y __asm__("fr9") = v.y;
@@ -712,20 +728,6 @@ static inline v4f v4Ftrv(v4f v) {
 		: "=f" (x), "=f" (y), "=f" (z), "=f" (w)
 		: "0" (x), "1" (y), "2" (z), "3" (w) );
 	return v4Set(x,y,z,w);
-}
-
-static inline float v2Cross(v2f l, v2f r) {
-	return l.x*r.y - l.y*r.x;
-}
-static inline v3f v3Cross(v3f l, v3f r) {
-	v3f d;
-	d.x = l.y*r.z - l.z*r.y;
-	d.y = l.z*r.x - l.x*r.z;
-	d.z = l.x*r.y - l.y*r.x;
-	return d;
-}
-static inline float v3Triple(v3f a, v3f b, v3f c) {
-	return v3Dot(a, v3Cross(b, c));
 }
 
 #ifndef VMATH_USE_XMTRX
@@ -789,6 +791,8 @@ static inline float v3Triple(v3f a, v3f b, v3f c) {
 		xmtrxStore(d);
 	}
 #endif
+
+#endif	//ifdef _arch_dreamcast
 
 //Right handed
 static inline vqf vqSetEular(float pitch, float yaw, float roll) {
@@ -937,7 +941,7 @@ void MatRotateYEulerRad3f(float *m, float angle, float *d);
 int MatInvert(float m[16], float invOut[16]);
 */
 
-#ifdef __CPLUSPLUS
+#ifdef __cplusplus
 }
 #endif
 

@@ -72,3 +72,23 @@ int FileSize(const char *fname) {
 	return size;
 }
 
+size_t Slurp(const char *fname, void **data) {
+	assert(fname);
+	
+	FILE *f = fopen(fname, "r");
+	if (f == NULL)
+		return 0;
+	
+	fseek(f, 0, SEEK_END);
+	int size = ftell(f);
+	
+	fseek(f, 0, SEEK_SET);
+	
+	SMART_ALLOC(data, size);
+	size_t readamt = fread(*data, 1, size, f);
+	
+	fclose(f);
+	
+	return readamt;
+}
+
