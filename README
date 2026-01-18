@@ -497,43 +497,43 @@ Known bugs
 
 --------------------------------------------------------------------------
 
-Future Ideas
+Future Ideas / TODOs:
 
-	* Code clean up
+	TODO: Code clean up
 
-	* Add Yliluoma dithering
+	TODO: Add Yliluoma dithering
 
-	* Improve error checking
+	TODO: Improve error checking
 
-	* It might be possible to improve VQ quality by compressing
+	TODO: It might be possible to improve VQ quality by compressing
 	4/5/6 bit color instead of 8 bit (so the compressor won't waste
 	codebook space on colors that are too similar to distinguish at
 	given bit depth)
 
-	* Speed up compression by not processing alpha for opaque textures
+	TODO: Speed up compression by not processing alpha for opaque textures
 
-	* Add ability to generate a single palette to be shared for
+	TODO: Add ability to generate a single palette to be shared for
 	multiple textures
 
-	* Add ability to generate animated VQ textures with shared
+	TODO: Add ability to generate animated VQ textures with shared
 	codebook for all frames
 
-	* Auto generate output name (e.g. -i image.png -o $.dt will
+	TODO: Auto generate output name (e.g. -i image.png -o $.dt will
 	output image.dt)
 
-	* Add wildcard input files (e.g. -i *.png)
+	TODO: Add wildcard input files (e.g. -i TODO:.png)
 
-	* Add VQ index dithering
+	TODO: Add VQ index dithering
 
-	* Add KIMG output support
+	TODO: Add KIMG output support
 
-	* Add per-axis edge sampling control
+	TODO: Add per-axis edge sampling control
 
-	* Rework code so that this can be used as a library
+	TODO: Rework code so that this can be used as a library
 
-	* Allow sizing to arbitary size (i.e. --resize 256x256)
+	TODO: Allow sizing to arbitary size (i.e. --resize 256x256)
 
-	* Add a filter to try to hide the palettized compressed mipmap bug
+	TODO: Add a filter to try to hide the palettized compressed mipmap bug
 
 --------------------------------------------------------------------------
 
