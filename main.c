@@ -7,12 +7,24 @@
 #include <ctype.h>
 #include <stdarg.h>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
+
+#ifndef _WIN32
+#include <glob.h>
+#endif
+
 #include "stb_image_write.h"
 #include "pvr_texture_encoder.h"
 #include "optparse.h"
 #include "mycommon.h"
 #include "file_pvr.h"
 #include "file_tex.h"
+#include "file_kmg.h"
 
 extern int LoadPalette(const char *fname, PvrTexEncoder *pte);
 
@@ -78,6 +90,7 @@ typedef enum {
 	EXT_PVR,
 	EXT_DT,
 	EXT_TEX,
+	EXT_KMG,
 	EXT_PAL,
 } FileExtension;
 
@@ -97,8 +110,161 @@ static const OptionMap file_extension[] = {
 	{".dt", EXT_DT},
 	{".tex", EXT_TEX},
 	{".vq", EXT_TEX},
+	{".kmg", EXT_KMG},
 	{".pal", EXT_PAL},
 };
+
+static int contains_wildcards(const char *s) {
+	return s && (strchr(s, '*') || strchr(s, '?') || strchr(s, '['));
+}
+
+static char *pvr_strdup(const char *s) {
+	if (!s) return NULL;
+#ifdef _MSC_VER
+	return _strdup(s);
+#else
+	return strdup(s);
+#endif
+}
+
+static char *path_stem(const char *path) {
+	if (!path) return pvr_strdup("");
+	const char *base = path;
+	const char *slash = strrchr(path, '/');
+	const char *bslash = strrchr(path, '\\');
+	if (slash && slash + 1 > base) base = slash + 1;
+	if (bslash && bslash + 1 > base) base = bslash + 1;
+	const char *dot = strrchr(base, '.');
+	size_t len = dot && dot > base ? (size_t)(dot - base) : strlen(base);
+	char *out = (char*)malloc(len + 1);
+	assert(out);
+	memcpy(out, base, len);
+	out[len] = '\0';
+	return out;
+}
+
+// Expand a template containing '$' with the provided stem.
+// '$$' becomes a literal '$'.
+static char *expand_out_template(const char *templ, const char *stem) {
+	if (!templ) return NULL;
+	if (!stem) stem = "";
+
+	size_t stem_len = strlen(stem);
+	size_t out_len = 0;
+	for (const char *p = templ; *p; ++p) {
+		if (*p == '$') {
+			if (p[1] == '$') {
+				out_len += 1;
+				++p;
+			} else {
+				out_len += stem_len;
+			}
+		} else {
+			out_len += 1;
+		}
+	}
+
+	char *out = (char*)malloc(out_len + 1);
+	assert(out);
+	char *w = out;
+	for (const char *p = templ; *p; ++p) {
+		if (*p == '$') {
+			if (p[1] == '$') {
+				*w++ = '$';
+				++p;
+			} else {
+				memcpy(w, stem, stem_len);
+				w += stem_len;
+			}
+		} else {
+			*w++ = *p;
+		}
+	}
+	*w = '\0';
+	return out;
+}
+
+static void push_str(char ***arr, unsigned *cnt, unsigned *cap, char *s) {
+	assert(arr);
+	assert(cnt);
+	assert(cap);
+	assert(s);
+	if (*cnt >= *cap) {
+		unsigned new_cap = *cap ? (*cap * 2) : 16;
+		char **new_arr = (char**)realloc(*arr, new_cap * sizeof(char*));
+		assert(new_arr);
+		*arr = new_arr;
+		*cap = new_cap;
+	}
+	(*arr)[(*cnt)++] = s;
+}
+
+static int cmp_str_ptr(const void *a, const void *b) {
+	const char * const *sa = (const char * const *)a;
+	const char * const *sb = (const char * const *)b;
+	return strcmp(*sa, *sb);
+}
+
+static void expand_and_push_inputs(char ***fnames, unsigned *fname_cnt, unsigned *fname_cap, const char *arg) {
+	assert(fnames);
+	assert(fname_cnt);
+	assert(fname_cap);
+	assert(arg);
+
+	if (!contains_wildcards(arg)) {
+		push_str(fnames, fname_cnt, fname_cap, pvr_strdup(arg));
+		return;
+	}
+
+#ifdef _WIN32
+	WIN32_FIND_DATAA ffd;
+	HANDLE h = FindFirstFileA(arg, &ffd);
+	ErrorExitOn(h == INVALID_HANDLE_VALUE, "No files match pattern: %s\n", arg);
+
+	// Directory prefix (including slash) from the pattern.
+	char dir_prefix[MAX_PATH];
+	memset(dir_prefix, 0, sizeof(dir_prefix));
+	const char *last_slash = strrchr(arg, '/');
+	const char *last_bslash = strrchr(arg, '\\');
+	const char *sep = last_slash;
+	if (!sep || (last_bslash && last_bslash > sep)) sep = last_bslash;
+	if (sep) {
+		size_t len = (size_t)(sep - arg) + 1;
+		if (len >= sizeof(dir_prefix)) len = sizeof(dir_prefix) - 1;
+		memcpy(dir_prefix, arg, len);
+		dir_prefix[len] = '\0';
+	}
+
+	char **matches = NULL;
+	unsigned mcnt = 0, mcap = 0;
+	for (;;) {
+		if (!(ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+			char full[MAX_PATH];
+			snprintf(full, sizeof(full), "%s%s", dir_prefix, ffd.cFileName);
+			push_str(&matches, &mcnt, &mcap, pvr_strdup(full));
+		}
+		if (!FindNextFileA(h, &ffd))
+			break;
+	}
+	FindClose(h);
+
+	ErrorExitOn(mcnt == 0, "No files match pattern: %s\n", arg);
+	qsort(matches, mcnt, sizeof(char*), cmp_str_ptr);
+	for (unsigned i = 0; i < mcnt; ++i) {
+		push_str(fnames, fname_cnt, fname_cap, matches[i]);
+	}
+	free(matches);
+#else
+	glob_t g;
+	memset(&g, 0, sizeof(g));
+	int rv = glob(arg, 0, NULL, &g);
+	ErrorExitOn(rv != 0 || g.gl_pathc == 0, "No files match pattern: %s\n", arg);
+	for (size_t i = 0; i < g.gl_pathc; ++i) {
+		push_str(fnames, fname_cnt, fname_cap, pvr_strdup(g.gl_pathv[i]));
+	}
+	globfree(&g);
+#endif
+}
 static const OptionMap supported_pixel_formats[] = {
 	{"RGB565", PT_RGB565},
 	{"ARGB1555", PT_ARGB1555},
@@ -193,12 +359,15 @@ int main(int argc, char **argv) {
 		{0}
 	};
 	
-	#define MAX_FNAMES	11
-	const char *fnames[MAX_FNAMES];
+	char **fnames = NULL;
 	unsigned fname_cnt = 0;
+	unsigned fname_cap = 0;
 	const char *outname = "";
+	char *outname_owned = NULL;
 	const char *prevname = "";
 	const char *palfile = NULL;
+	bool force_size = false;
+	unsigned force_w = 0, force_h = 0;
 	
 	//Parse command line parameters
 	struct optparse options;
@@ -211,8 +380,7 @@ int main(int argc, char **argv) {
 			return 0;
 			break;
 		case 'i':
-			ErrorExitOn(fname_cnt >= MAX_FNAMES, "Too many input files have been specified\n");
-			fnames[fname_cnt++] = options.optarg;
+			expand_and_push_inputs(&fnames, &fname_cnt, &fname_cap, options.optarg);
 			break;
 		case 'o':
 			outname = options.optarg;
@@ -232,7 +400,20 @@ int main(int argc, char **argv) {
 			OPTARG_FIX_UP;
 			pte.resize = PTE_FIX_NEAREST;
 			if (options.optarg) {
-				pte.resize = GetOptMap(resize_options, ARR_SIZE(resize_options), options.optarg, PTE_FIX_UP, "invalid resize value\n");
+				unsigned w = 0, h = 0;
+				if (sscanf(options.optarg, "%ux%u", &w, &h) == 2 || sscanf(options.optarg, "%uX%u", &w, &h) == 2) {
+					force_size = true;
+					force_w = w;
+					force_h = h;
+					pte.resize = PTE_FIX_NONE;
+				} else if (sscanf(options.optarg, "%u", &w) == 1) {
+					force_size = true;
+					force_w = w;
+					force_h = w;
+					pte.resize = PTE_FIX_NONE;
+				} else {
+					pte.resize = GetOptMap(resize_options, ARR_SIZE(resize_options), options.optarg, PTE_FIX_UP, "invalid resize value\n");
+				}
 			}
 			break;
 		case 'R':
@@ -342,6 +523,21 @@ int main(int argc, char **argv) {
 	bool already_have_pal_file = false;
 	bool only_want_pal = false;
 	FileExtension output_file_type = EXT_UNKNOWN;
+
+	ErrorExitOn(!have_output && !have_preview, "I_Error: No output or preview file name specified, nothing to do!\n");
+	ErrorExitOn(fname_cnt == 0, "No input files specified\n");
+	ErrorExitOn(force_size && fname_cnt > 1, "Explicit --resize WxH is not supported when providing multiple input files\n");
+
+	// Output template expansion (e.g. -o $.dt)
+	if (have_output && strchr(outname, '$')) {
+		char *stem = path_stem(fnames[0]);
+		outname_owned = expand_out_template(outname, stem);
+		free(stem);
+		outname = outname_owned;
+	}
+
+	// Recompute have_output after template expansion.
+	have_output = strlen(outname) > 0;
 	
 	//Get output extension
 	if (have_output) {
@@ -357,11 +553,13 @@ int main(int argc, char **argv) {
 		only_want_pal = true;
 	}
 	
-	ErrorExitOn(!have_output && !have_preview, "No output or preview file name specified, nothing to do\n");
-	ErrorExitOn(fname_cnt == 0, "No input files specified\n");
-
 	pteLog(LOG_PROGRESS, "Reading input...\n");
-	pteLoadFromFiles(&pte, fnames, fname_cnt);
+	pteLoadFromFiles(&pte, (const char **)fnames, fname_cnt);
+
+	if (force_size) {
+		pte.w = force_w;
+		pte.h = force_h;
+	}
 	
 	//Check and fix up image size
 	pteSetSize(&pte);
@@ -482,6 +680,9 @@ int main(int argc, char **argv) {
 			
 			if (!already_have_pal_file && pteIsPalettized(&pte))
 				fTexWritePaletteAppendPal(&pte, outname);
+		} else if (output_file_type == EXT_KMG) {
+			pteLog(LOG_COMPLETION, "Writing .KMG to \"%s\"...\n", outname);
+			fKmgWrite(&pte, outname);
 		} else {
 			ErrorExit("Unsupported output file type for \"%s\"\n", outname);
 		}
@@ -490,6 +691,12 @@ int main(int argc, char **argv) {
 	}
 	
 	pteFree(&pte);
+
+	for (unsigned i = 0; i < fname_cnt; ++i) {
+		free(fnames[i]);
+	}
+	free(fnames);
+	free(outname_owned);
 	
 	return 0;
 }

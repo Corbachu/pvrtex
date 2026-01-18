@@ -37,6 +37,7 @@ set(PVRTX_SOURCES
   file_pvr.c
   file_tex.c
   file_dctex.c
+  file_kmg.c
   main.c
 
   dither.cpp
