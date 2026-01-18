@@ -124,12 +124,13 @@ int fPvrLoad(const char *fname, PvrTexDecoder *dst) {
 	if (size == 0 || data == 0)
 		goto err_exit;
 	
-	const void *fileend = data + size;
+	const char *data_bytes = (const char*)data;
+	const char *fileend = data_bytes + size;
 	
 	const TexturePvrHeader *pvrh = data;
 	
 	//Check file is long enough to at least have header
-	if ((size < sizeof(TexturePvrHeader)) || ((data + pvrh->len) > fileend)) {
+	if ((size < sizeof(TexturePvrHeader)) || ((data_bytes + pvrh->len) > fileend)) {
 		pteLog(LOG_WARNING, ".PVR file appears invalid (incomplete file?)\n");
 		goto err_exit;
 	}
@@ -139,8 +140,8 @@ int fPvrLoad(const char *fname, PvrTexDecoder *dst) {
 		const TexturePvrGbix *g = (const TexturePvrGbix *)pvrh;
 		dst->gbix = g->gbix;
 		
-		pvrh = (TexturePvrHeader*)(data + pvrh->len + 8);
-		if (((void*)pvrh + pvrh->len) > fileend) {
+		pvrh = (TexturePvrHeader*)(data_bytes + pvrh->len + 8);
+		if (((const char*)pvrh + pvrh->len) > fileend) {
 			pteLog(LOG_WARNING, ".PVR file appears invalid (incomplete file?)\n");
 			goto err_exit;
 		}
@@ -151,7 +152,7 @@ int fPvrLoad(const char *fname, PvrTexDecoder *dst) {
 		goto err_exit;
 	}
 	
-	if ((void*)pvrh + pvrh->len > fileend) {
+	if ((const char*)pvrh + pvrh->len > fileend) {
 		pteLog(LOG_WARNING, ".PVR file appears invalid (bad fourcc)\n");
 		goto err_exit;
 	}
@@ -221,15 +222,15 @@ int fPvrLoad(const char *fname, PvrTexDecoder *dst) {
 			calculating the start from that, is more likely to 
 			decode correctly.
 		*/
-		const void *pvrt_end = (void*)((uintptr_t)pvrh + pvrh->len + 8);
+		const char *pvrt_end = (const char*)pvrh + pvrh->len + 8;
 		size_t pvr_size = CalcTextureSize(pvrh->w, pvrh->h, pixel_format, mip, !!cbsize, cbsize);
-		const void *img_start = pvrt_end - pvr_size;
+		const char *img_start = pvrt_end - pvr_size;
 		
-		if (pvrt_end > fileend || img_start < (void*)pvrh) {
+		if (pvrt_end > fileend || img_start < (const char*)pvrh) {
 			pteLog(LOG_WARNING, ".PVR file appears invalid (incomplete file?)\n");
 			goto err_exit;
 		}
-		ptdSetUncompressedSource(dst, img_start);
+		ptdSetUncompressedSource(dst, (const void*)img_start);
 	}
 	
 	ptdDecode(dst);

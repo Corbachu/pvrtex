@@ -331,7 +331,7 @@ void pteGenerateUncompressed(PvrTexEncoder *pte) {
 		1,
 		pte->palette,
 		pte->palette_size,
-		pte->pvr_tex+(int)(4*BytesPerPixel(pte->pixel_format)),
+		(char*)pte->pvr_tex + (int)(4*BytesPerPixel(pte->pixel_format)),
 		pteGetConvertFormat(pte, 1));
 	
 }
@@ -544,16 +544,16 @@ void pteCompress(PvrTexEncoder *pte) {
 	//Create PVR codebook
 	SMART_ALLOC(&pte->pvr_codebook, PVR_CODEBOOK_SIZE_BYTES);
 	ptConvertToTargetFormat(result.codebook, cbsize, vectorarea, pte->palette, pte->palette_size,
-		pte->pvr_codebook + pte->pvr_idx_offset*8, pteGetConvertFormat(pte, 1));
+		(char*)pte->pvr_codebook + pte->pvr_idx_offset*8, pteGetConvertFormat(pte, 1));
 	
 	//Add any perfect CB vectors to end of generated CB
 	unsigned perfectcbofs = pte->pvr_idx_offset + pte->codebook_size - gen_perfect_mip_vectors;
-	void *cbend = pte->pvr_codebook + perfectcbofs * 8;
+	void *cbend = (char*)pte->pvr_codebook + perfectcbofs * 8;
 	memcpy(cbend, perfect_cb, gen_perfect_mip_vectors * 8);
 	
 	//Build up indices for texture
 	SMART_ALLOC(&pte->pvr_tex, CalcTextureSize(pte->w, pte->h, pte->pixel_format, pteHasMips(pte), 1, PVR_CODEBOOK_SIZE_BYTES));
-	uint8_t *texdst = pte->pvr_tex;
+	uint8_t *texdst = (uint8_t*)pte->pvr_tex;
 	
 	//Add any perfect mips
 	for(int i = 0; i < perfect_mip_idx; i++) {
@@ -744,7 +744,7 @@ void pteGeneratePreviews(PvrTexEncoder *pte) {
 	ptdSetStride(&ptd, pteIsStrided(pte));
 	if (pteIsCompressed(pte)) {
 		ptdSetCompressedSource(&ptd, pte->pvr_tex,
-			pte->pvr_codebook + pte->pvr_idx_offset * PVR_CODEBOOK_ENTRY_SIZE_BYTES,
+			(const void*)((const char*)pte->pvr_codebook + pte->pvr_idx_offset * PVR_CODEBOOK_ENTRY_SIZE_BYTES),
 			pte->codebook_size, pte->pvr_idx_offset);
 	} else {
 		ptdSetUncompressedSource(&ptd, pte->pvr_tex);

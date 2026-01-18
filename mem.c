@@ -31,8 +31,10 @@
 #include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <stdatomic.h>
 #include <string.h>
+#if !defined(_MSC_VER)
+#include <stdatomic.h>
+#endif
 #if HAVE_MALLOC_H
 #include <malloc.h>
 #endif
@@ -69,11 +71,19 @@ void  free(void *ptr);
  * dynamic libraries and remove -Wl,-Bsymbolic from the linker flags.
  * Note that this will cost performance. */
 
+#if defined(_MSC_VER)
+static size_t max_alloc_size = INT_MAX;
+
+void av_max_alloc(size_t max){
+    max_alloc_size = max;
+}
+#else
 static atomic_size_t max_alloc_size = ATOMIC_VAR_INIT(INT_MAX);
 
 void av_max_alloc(size_t max){
     atomic_store_explicit(&max_alloc_size, max, memory_order_relaxed);
 }
+#endif
 
 static int size_mult(size_t a, size_t b, size_t *r)
 {
@@ -97,7 +107,11 @@ void *av_malloc(size_t size)
 {
     void *ptr = NULL;
 
+#if defined(_MSC_VER)
+    if (size > max_alloc_size)
+#else
     if (size > atomic_load_explicit(&max_alloc_size, memory_order_relaxed))
+#endif
         return NULL;
 
 #if HAVE_POSIX_MEMALIGN
@@ -153,7 +167,11 @@ void *av_malloc(size_t size)
 void *av_realloc(void *ptr, size_t size)
 {
     void *ret;
+#if defined(_MSC_VER)
+    if (size > max_alloc_size)
+#else
     if (size > atomic_load_explicit(&max_alloc_size, memory_order_relaxed))
+#endif
         return NULL;
 
 #if HAVE_ALIGNED_MALLOC
@@ -499,7 +517,11 @@ void *av_fast_realloc(void *ptr, unsigned int *size, size_t min_size)
     if (min_size <= *size)
         return ptr;
 
+#if defined(_MSC_VER)
+    max_size = max_alloc_size;
+#else
     max_size = atomic_load_explicit(&max_alloc_size, memory_order_relaxed);
+#endif
     /* *size is an unsigned, so the real maximum is <= UINT_MAX. */
     max_size = FFMIN(max_size, UINT_MAX);
 
@@ -533,7 +555,11 @@ static inline void fast_malloc(void *ptr, unsigned int *size, size_t min_size, i
         return;
     }
 
+#if defined(_MSC_VER)
+    max_size = max_alloc_size;
+#else
     max_size = atomic_load_explicit(&max_alloc_size, memory_order_relaxed);
+#endif
     /* *size is an unsigned, so the real maximum is <= UINT_MAX. */
     max_size = FFMIN(max_size, UINT_MAX);
 

@@ -116,7 +116,7 @@ int fDtLoad(const char *fname, PvrTexDecoder *dst) {
 		unsigned cbsize = fDtGetCodebookSizeBytes(hdr) / PVR_CODEBOOK_ENTRY_SIZE_BYTES;
 		pteLog(LOG_WARNING, "CB size %u\n", cbsize);
 		ptdSetCompressedSource(dst,
-			fDtGetPvrTexData(hdr) + fDtGetCodebookSizeBytes(hdr),
+			(const void*)((const char*)fDtGetPvrTexData(hdr) + fDtGetCodebookSizeBytes(hdr)),
 			fDtGetPvrTexData(hdr),
 			cbsize,
 			PVR_FULL_CODEBOOK - cbsize);

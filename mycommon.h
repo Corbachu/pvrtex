@@ -4,6 +4,23 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#ifdef _MSC_VER
+#include <string.h>
+
+// GCC-style attributes are used in a couple of headers.
+#ifndef __attribute__
+#define __attribute__(x)
+#endif
+
+// POSIX names used by the codebase.
+#ifndef strcasecmp
+#define strcasecmp _stricmp
+#endif
+#ifndef strncasecmp
+#define strncasecmp _strnicmp
+#endif
+#endif
+
 #define ARR_SIZE(array)	(sizeof(array) / sizeof(array[0]))
 
 static inline bool IsPow2(uint32_t val) {

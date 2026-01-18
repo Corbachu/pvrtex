@@ -3,6 +3,11 @@ cmake_minimum_required(VERSION 3.16)
 #1/17/26 ~CA: Coversion from Makefile to CMakeLists.txt
 project(pvrtex LANGUAGES C CXX)
 
+# MSVC's <stdatomic.h> requires C11 or later.
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
+
 # Options roughly matching the Makefile behavior.
 option(PVRTX_MARCH_NATIVE "Enable -march=native on GCC/Clang (Release)" ON)
 option(PVRTX_ENABLE_PROFILING "Enable -pg in Debug (GCC/Clang)" OFF)
@@ -51,7 +56,12 @@ target_compile_definitions(pvrtex PRIVATE
 
 # Warnings / basic flags
 if (MSVC)
-  target_compile_options(pvrtex PRIVATE /W4)
+  target_compile_options(pvrtex PRIVATE
+    /W4
+    $<$<COMPILE_LANGUAGE:C>:/std:c11>
+    $<$<COMPILE_LANGUAGE:C>:/experimental:c11atomics>
+  )
+  target_compile_definitions(pvrtex PRIVATE _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES)
 else()
   target_compile_options(pvrtex PRIVATE
     -Wall

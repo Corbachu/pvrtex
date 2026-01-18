@@ -50,11 +50,11 @@ void WritePvrTexEncoder(const PvrTexEncoder *pte, FILE *f, ptewSmallVQType svq, 
 		if (svq == PTEW_NO_SMALL_VQ)
 			cbsize = PVR_CODEBOOK_SIZE_BYTES;
 		pteLog(LOG_DEBUG, "Writing %u bytes for codebook\n", (unsigned)cbsize);
-		CheckedFwrite(pte->pvr_codebook + pte->pvr_idx_offset * PVR_CODEBOOK_ENTRY_SIZE_BYTES, cbsize, f);
+		CheckedFwrite((const char*)pte->pvr_codebook + pte->pvr_idx_offset * PVR_CODEBOOK_ENTRY_SIZE_BYTES, cbsize, f);
 	}
 	
 	if (!pteIsCompressed(pte) && pteHasMips(pte)) {
-		CheckedFwrite(pte->pvr_tex + mip_skip, texsize-mip_skip, f);
+		CheckedFwrite((const char*)pte->pvr_tex + mip_skip, texsize-mip_skip, f);
 	} else {
 		CheckedFwrite(pte->pvr_tex, texsize, f);
 	}

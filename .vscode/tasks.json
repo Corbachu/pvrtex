@@ -13,20 +13,23 @@
     {
       "label": "CMake: configure",
       "type": "shell",
-      "command": "cmake",
+      "command": "${config:cmake.cmakePath}",
       "args": [
         "-S",
         ".",
         "-B",
         "build",
-        "-DCMAKE_BUILD_TYPE=${input:buildType}"
+        "-G",
+        "${config:pvrtex.cmake.generator}",
+        "-A",
+        "${config:pvrtex.cmake.arch}"
       ],
       "problemMatcher": []
     },
     {
       "label": "CMake: build",
       "type": "shell",
-      "command": "cmake",
+      "command": "${config:cmake.cmakePath}",
       "args": [
         "--build",
         "build",
@@ -38,12 +41,12 @@
         "isDefault": true
       },
       "dependsOn": ["CMake: configure"],
-      "problemMatcher": ["$gcc"]
+      "problemMatcher": ["$msCompile"]
     },
     {
       "label": "CMake: clean",
       "type": "shell",
-      "command": "cmake",
+      "command": "${config:cmake.cmakePath}",
       "args": [
         "--build",
         "build",

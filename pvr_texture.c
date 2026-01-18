@@ -4,6 +4,16 @@
 #include <string.h>
 #include <assert.h>
 
+#ifdef _MSC_VER
+#include <intrin.h>
+static __forceinline int __builtin_ffs(unsigned int x) {
+	unsigned long idx;
+	if (_BitScanForward(&idx, x))
+		return (int)idx + 1;
+	return 0;
+}
+#endif
+
 #include "pvr_texture.h"
 
 #define make_mask(width) ((width != 0) ? (0xffffffffu >> (32 - (width))) : 0)

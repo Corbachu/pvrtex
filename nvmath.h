@@ -4,6 +4,33 @@
 #include <stdint.h>
 #include <math.h>
 
+#ifdef _MSC_VER
+// Map GCC/Clang builtins used below to MSVC equivalents.
+#ifndef __builtin_fabsf
+#define __builtin_fabsf fabsf
+#endif
+#ifndef __builtin_sqrt
+#define __builtin_sqrt sqrt
+#endif
+#ifndef __builtin_sinf
+#define __builtin_sinf sinf
+#endif
+#ifndef __builtin_cosf
+#define __builtin_cosf cosf
+#endif
+#ifndef __builtin_acosf
+#define __builtin_acosf acosf
+#endif
+#ifndef __builtin_abs
+#define __builtin_abs abs
+#endif
+
+static __forceinline void __builtin_sincosf(float rad, float *s, float *c) {
+	*s = sinf(rad);
+	*c = cosf(rad);
+}
+#endif
+
 #ifdef __cplusplus
 #include <string.h>
 extern "C" {

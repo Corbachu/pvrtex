@@ -39,7 +39,7 @@ int LoadPalette(const char *fname, PvrTexEncoder *pte) {
 		ErrorExitOn(color_count > PVR_8B_PALETTE_SIZE, ".PAL file appears to contain more than 256 colors (%u found)\n", color_count);
 		ErrorExitOn(size < (color_size_bytes + 8), ".PAL file is too short to contain %u colors\n", color_count);
 		
-		pxlARGB8888 *colors = data+8;
+		pxlARGB8888 *colors = (pxlARGB8888 *)((char*)data + 8);
 		SMART_ALLOC(&pte->palette, color_size_bytes);
 		for(unsigned i = 0; i < color_count; i++) {
 			pte->palette[i] = pxlConvertARGB8888toABGR8888(colors[i]);

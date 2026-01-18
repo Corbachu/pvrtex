@@ -78,7 +78,7 @@ void ptdSetCompressedSource(PvrTexDecoder *ptd, const void *indices, const void 
 	if (indices == NULL) {
 		assert(cb_size_entries == PVR_FULL_CODEBOOK);
 		assert(cb_offset_entries == 0);
-		indices = cb + PVR_CODEBOOK_SIZE_BYTES;
+		indices = (const void*)((const char*)cb + PVR_CODEBOOK_SIZE_BYTES);
 	} else {
 		assert((cb_size_entries + cb_offset_entries) <= PVR_FULL_CODEBOOK);
 	}
@@ -143,7 +143,7 @@ void ptdDecode(PvrTexDecoder *ptd) {
 		if (ptd->mips) {
 			//We already decompressed the image, so we always pass 0 for compression here
 			unsigned ofs = MipMapOffset(ptd->pixel_format, 0, i);
-			pixels += ofs;
+			pixels = (const void*)((const char*)pixels + ofs);
 		}
 		
 		//Convert image from pixels, storing in prev
