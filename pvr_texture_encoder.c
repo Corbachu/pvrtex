@@ -206,7 +206,6 @@ int pteSetSize(PvrTexEncoder *pte) {
 			//~ if (!pteIsPartial(pte))
 				//~ assert(IsPow2(pte->h));
 		}
-		return 0;
 		break;
 	case PTE_FIX_UP:
 		if (!pteIsStrided(pte)) {
@@ -387,6 +386,120 @@ void pteGeneratePalette(PvrTexEncoder *pte) {
 
 typedef uint64_t CBVector;
 typedef pxlABGR8888 PerfCodebook[PVR_FULL_CODEBOOK][16];
+
+static void vq_index_dither_top_mip(PvrTexEncoder *pte, const uint8_t *codebook_abgr, unsigned cbsize,
+	int *vq_indices, unsigned vq_point_start, float amt) {
+	// Only supports the standard 2x2 (4-pixel) VQ vectors.
+	if (amt <= 0.0f)
+		return;
+	if (VectorArea(pte->pixel_format) != 4)
+		return;
+	if (pteIsStrided(pte))
+		return;
+	if (!pte->raw_is_twiddled)
+		return;
+
+	unsigned toplvl = pteTopMipLvl(pte);
+	unsigned w = pte->w;
+	unsigned h = pte->h;
+	unsigned bw = w / 2;
+	unsigned bh = h / 2;
+	unsigned block_cnt = bw * bh;
+
+	// Build a twiddled index image from the compressor indices subset.
+	uint8_t *idx_img = (uint8_t*)malloc(block_cnt);
+	assert(idx_img);
+	for (unsigned i = 0; i < block_cnt; ++i) {
+		int v = vq_indices[vq_point_start + i];
+		if (v < 0) v = 0;
+		if ((unsigned)v >= cbsize) v = (int)(cbsize - 1);
+		idx_img[i] = (uint8_t)v;
+	}
+
+	// Detwiddle indices to linear block order.
+	MakeDetwiddled8(idx_img, (int)bw, (int)bh);
+
+	// Detwiddle the top mip pixels for error computation.
+	pxlABGR8888 *pix_lin = (pxlABGR8888*)malloc((size_t)w * (size_t)h * sizeof(pxlABGR8888));
+	assert(pix_lin);
+	memcpy(pix_lin, pte->raw_mips[toplvl], (size_t)w * (size_t)h * sizeof(pxlABGR8888));
+	MakeDetwiddled32(pix_lin, (int)w, (int)h);
+
+	// Error buffer per block, 16 channels (4 pixels * ABGR).
+	float *err = (float*)calloc((size_t)block_cnt * 16, sizeof(float));
+	assert(err);
+
+	// Floyd–Steinberg error diffusion over blocks.
+	for (unsigned y = 0; y < bh; ++y) {
+		for (unsigned x = 0; x < bw; ++x) {
+			unsigned bi = y * bw + x;
+			float vec[16];
+			{
+				unsigned px = x * 2;
+				unsigned py = y * 2;
+				pxlABGR8888 p0 = pix_lin[(py + 0) * w + (px + 0)];
+				pxlABGR8888 p1 = pix_lin[(py + 0) * w + (px + 1)];
+				pxlABGR8888 p2 = pix_lin[(py + 1) * w + (px + 0)];
+				pxlABGR8888 p3 = pix_lin[(py + 1) * w + (px + 1)];
+				const float *e = err + (size_t)bi * 16;
+				vec[0]  = p0.a + e[0];  vec[1]  = p0.b + e[1];  vec[2]  = p0.g + e[2];  vec[3]  = p0.r + e[3];
+				vec[4]  = p1.a + e[4];  vec[5]  = p1.b + e[5];  vec[6]  = p1.g + e[6];  vec[7]  = p1.r + e[7];
+				vec[8]  = p2.a + e[8];  vec[9]  = p2.b + e[9];  vec[10] = p2.g + e[10]; vec[11] = p2.r + e[11];
+				vec[12] = p3.a + e[12]; vec[13] = p3.b + e[13]; vec[14] = p3.g + e[14]; vec[15] = p3.r + e[15];
+			}
+
+			// Find best codebook entry.
+			unsigned best = idx_img[bi];
+			unsigned long best_err = ~0ul;
+			for (unsigned ci = 0; ci < cbsize; ++ci) {
+				const uint8_t *cb = codebook_abgr + (size_t)ci * 16;
+				unsigned long sse = 0;
+				for (unsigned k = 0; k < 16; ++k) {
+					float d = vec[k] - (float)cb[k];
+					sse += (unsigned long)(d * d);
+					if (sse >= best_err) break;
+				}
+				if (sse < best_err) {
+					best_err = sse;
+					best = ci;
+				}
+			}
+
+			idx_img[bi] = (uint8_t)best;
+
+			// Compute and diffuse error.
+			{
+				const uint8_t *cb = codebook_abgr + (size_t)best * 16;
+				float qerr[16];
+				for (unsigned k = 0; k < 16; ++k) {
+					qerr[k] = (vec[k] - (float)cb[k]) * amt;
+				}
+				#define ADD_ERR(nx, ny, wgt) do { \
+					if ((nx) < bw && (ny) < bh) { \
+						float *dst = err + ((size_t)(ny) * bw + (nx)) * 16; \
+						for (unsigned k = 0; k < 16; ++k) dst[k] += qerr[k] * (wgt); \
+					} \
+				} while(0)
+				ADD_ERR(x + 1, y + 0, 7.0f / 16.0f);
+				if (x > 0) ADD_ERR(x - 1, y + 1, 3.0f / 16.0f);
+				ADD_ERR(x + 0, y + 1, 5.0f / 16.0f);
+				ADD_ERR(x + 1, y + 1, 1.0f / 16.0f);
+				#undef ADD_ERR
+			}
+		}
+	}
+
+	free(err);
+	free(pix_lin);
+
+	// Twiddle the dithered indices back and write into the compressor indices.
+	MakeTwiddled8(idx_img, (int)bw, (int)bh);
+	for (unsigned i = 0; i < block_cnt; ++i) {
+		vq_indices[vq_point_start + i] = (int)idx_img[i];
+	}
+	free(idx_img);
+}
+
 //If vec is in cb, returns idx, otherwise adds to cb and returns cb_used
 static unsigned AddFindVector(PvrTexEncoder *pte, CBVector *cb, pxlABGR8888 *vec, unsigned vectorarea, unsigned cb_used, unsigned offset, unsigned format) {
 	unsigned match = 0;
@@ -540,6 +653,18 @@ void pteCompress(PvrTexEncoder *pte) {
 	pteLog(LOG_DEBUG, "Done!\n"); fflush(stdout);
 	assert(result.indices);
 	assert(result.codebook);
+
+	// Optional VQ index dithering (top mip only). Uses the existing --dither amount.
+	// Note: for non-mipped textures, compressor point order matches top-mip block order.
+	if (pte->dither > 0.0f && VectorArea(pte->pixel_format) == 4 && !pteIsStrided(pte) && !pteHasMips(pte)) {
+		vq_index_dither_top_mip(pte, (const uint8_t*)result.codebook, cbsize, result.indices, 0, pte->dither);
+	} else if (pte->dither > 0.0f && VectorArea(pte->pixel_format) == 4 && !pteIsStrided(pte) && pteHasMips(pte)) {
+		unsigned top_pix_ofs = (unsigned)MipMapOffset(PT_PIXEL_OFFSET, 0, pteTopMipLvl(pte));
+		if (top_pix_ofs >= perfect_mip_pixels) {
+			unsigned top_point_start = (top_pix_ofs - perfect_mip_pixels) / vectorarea;
+			vq_index_dither_top_mip(pte, (const uint8_t*)result.codebook, cbsize, result.indices, top_point_start, pte->dither);
+		}
+	}
 	
 	//Create PVR codebook
 	SMART_ALLOC(&pte->pvr_codebook, PVR_CODEBOOK_SIZE_BYTES);
